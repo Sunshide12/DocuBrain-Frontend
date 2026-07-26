@@ -70,7 +70,6 @@ interface DocumentProgressEvent {
 interface CreateConversationResponse {
   createConversation: {
     id: string;
-    agent_type: string;
   };
 }
 
@@ -223,15 +222,14 @@ export default function UploadsPage() {
   };
 
   const createConversationMutation = useMutation({
-    mutationFn: ({ documentId, agentType }: { documentId: string; agentType: string }) =>
+    mutationFn: ({ documentId }: { documentId: string }) =>
       graphqlClient.request<CreateConversationResponse>(gql`
-        mutation CreateConversation($document_id: ID!, $agent_type: String) {
-          createConversation(document_id: $document_id, agent_type: $agent_type) {
+        mutation CreateConversation($document_id: ID!) {
+          createConversation(document_id: $document_id) {
             id
-            agent_type
           }
         }
-      `, { document_id: documentId, agent_type: agentType }),
+      `, { document_id: documentId }),
     onSuccess: (data) => {
       router.push(`/chat/${data.createConversation.id}`);
     },
@@ -243,7 +241,7 @@ export default function UploadsPage() {
       toast.error("Document is still processing Twin.");
       return;
     }
-    createConversationMutation.mutate({ documentId: docId, agentType: 'document_qa' });
+    createConversationMutation.mutate({ documentId: docId });
   };
 
   if (!user) return <div className="flex h-dvh items-center justify-center">Loading session...</div>;

@@ -1,8 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { graphqlClient } from "@/lib/graphql";
-import { gql } from "graphql-request";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth";
 import { useRouter, useParams } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -10,49 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { toast } from "sonner";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, MessageSquare, GraduationCap } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { ChatMobileTabs, type ChatMobileView } from "@/components/chat/chat-mobile-tabs";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { TypingIndicator } from "@/components/chat/typing-indicator";
 import { QuizPanel } from "@/components/quiz/QuizPanel";
-import { AgentSwitcher } from "@/components/agents/AgentSwitcher";
-
-const CONVERSATION_QUERY = gql`
-  query GetConversation($id: ID!) {
-    conversation(id: $id) {
-      id
-      title
-      agent_type
-      document {
-        id
-        title
-        file_path
-      }
-      messages {
-        id
-        role
-        content
-        response_type
-        metadata
-        created_at
-      }
-    }
-  }
-`;
-
-const SEND_MESSAGE_MUTATION = gql`
-  mutation SendMessage($conversation_id: ID!, $content: String!) {
-    sendMessage(conversation_id: $conversation_id, content: $content) {
-      id
-      role
-      content
-      response_type
-      metadata
-    }
-  }
-`;
+import { useConversation } from "@/hooks/useConversation";
+import { useSendMessage } from "@/hooks/useSendMessage";
 
 export default function ChatPage() {
   const params = useParams();
@@ -62,56 +25,12 @@ export default function ChatPage() {
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
   const [activeMobileView, setActiveMobileView] = useState<ChatMobileView>("chat");
+  const [desktopView, setDesktopView] = useState<"chat" | "quizzes">("chat");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const quizToastShownRef = useRef<Set<string>>(new Set());
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["conversation", conversationId],
-    queryFn: () => graphqlClient.request(CONVERSATION_QUERY, { id: conversationId }),
-    enabled: !!conversationId,
-    refetchInterval: 3000,
-  });
-
-  const sendMessageMutation = useMutation({
-    mutationFn: (msg: string) =>
-      graphqlClient.request(SEND_MESSAGE_MUTATION, {
-        conversation_id: conversationId,
-        content: msg,
-      }),
-    onMutate: async (newMsg) => {
-      await queryClient.cancelQueries({ queryKey: ["conversation", conversationId] });
-      const previousData: any = queryClient.getQueryData(["conversation", conversationId]);
-
-      queryClient.setQueryData(["conversation", conversationId], (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          conversation: {
-            ...old.conversation,
-            messages: [
-              ...old.conversation.messages,
-              {
-                id: Date.now().toString(),
-                role: "user",
-                content: newMsg,
-                response_type: null,
-                metadata: null,
-                created_at: new Date().toISOString(),
-              },
-            ],
-          },
-        };
-      });
-      return { previousData };
-    },
-    onError: (_err, _newMsg, context) => {
-      queryClient.setQueryData(["conversation", conversationId], context?.previousData);
-      toast.error("Failed to send message");
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
-    },
-  });
+  const { data, isLoading } = useConversation(conversationId);
+  const sendMessageMutation = useSendMessage(conversationId);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,27 +39,10 @@ export default function ChatPage() {
     setContent("");
   };
 
-  const handleAgentChanged = (newAgentType: string) => {
-    // Update local cache immediately so the UI reacts instantly
-    queryClient.setQueryData(["conversation", conversationId], (old: any) => {
-      if (!old) return old;
-      return {
-        ...old,
-        conversation: { ...old.conversation, agent_type: newAgentType },
-      };
-    });
-    // Auto-switch view based on new agent
-    if (newAgentType === "quiz_generator") {
-      setActiveMobileView("quizzes");
-    } else {
-      setActiveMobileView("chat");
-    }
-  };
-
   // Listen for QuizGenerationCompleted broadcast event
   useEffect(() => {
     if (!user) return;
-    let channel: any = null;
+    let channel: ReturnType<NonNullable<typeof import("@/lib/echo").echo>["private"]> | null = null;
 
     const subscribe = async () => {
       try {
@@ -153,7 +55,9 @@ export default function ChatPage() {
           const key = `${e?.document_id}-${e?.status}`;
           if (e?.status === "ready" && !quizToastShownRef.current.has(key)) {
             quizToastShownRef.current.add(key);
-            toast.success("¡El quiz está listo!", { duration: 4000 });
+            import("sonner").then(({ toast }) =>
+              toast.success("¡El quiz está listo!", { duration: 4000 })
+            );
             queryClient.invalidateQueries({ queryKey: ["documentQuizzes"] });
           }
         });
@@ -164,8 +68,9 @@ export default function ChatPage() {
 
     subscribe();
     return () => {
-      if (channel) {
-        import("@/lib/echo").then(({ echo }) => echo?.leave(channel.name));
+      const channelName = channel?.name;
+      if (channelName) {
+        import("@/lib/echo").then(({ echo }) => echo?.leave(channelName));
       }
     };
   }, [user, queryClient]);
@@ -176,25 +81,12 @@ export default function ChatPage() {
     }
   }, [data?.conversation?.messages, sendMessageMutation.isPending]);
 
-  // When conversation loads, set the correct initial mobile view
-  useEffect(() => {
-    const agentType = data?.conversation?.agent_type;
-    if (!agentType) return;
-    if (agentType === "quiz_generator") {
-      setActiveMobileView("quizzes");
-    } else {
-      setActiveMobileView("chat");
-    }
-  }, [data?.conversation?.agent_type]);
-
   if (isLoading) return <div className="flex h-screen items-center justify-center">Loading conversation...</div>;
 
   const conversation = data?.conversation;
   if (!conversation) return <div className="flex h-screen items-center justify-center">Conversation not found.</div>;
 
   const documentId = conversation.document?.id;
-  const agentType: string = conversation.agent_type ?? "document_qa";
-  const isQuizMode = agentType === "quiz_generator";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background md:flex-row">
@@ -210,18 +102,8 @@ export default function ChatPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
-          <ChatMobileTabs
-            active={activeMobileView}
-            agentType={agentType}
-            onChange={setActiveMobileView}
-          />
+          <ChatMobileTabs active={activeMobileView} onChange={setActiveMobileView} />
         </div>
-        {/* Agent switcher on mobile too */}
-        <AgentSwitcher
-          conversationId={conversationId}
-          currentAgentType={agentType}
-          onAgentChanged={handleAgentChanged}
-        />
       </div>
 
       {/* ── Left panel: PDF Viewer ── */}
@@ -254,7 +136,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ── Right panel: Chat or Quizzes ── */}
+      {/* ── Right panel: Chat + Quizzes ── */}
       <div
         className={cn(
           "relative w-full min-h-0 flex-1 flex-col bg-background md:z-10 md:flex md:w-[55%] md:flex-initial md:shadow-2xl",
@@ -266,60 +148,92 @@ export default function ChatPage() {
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold truncate">{conversation.title}</span>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <AgentSwitcher
-              conversationId={conversationId}
-              currentAgentType={agentType}
-              onAgentChanged={handleAgentChanged}
-            />
+          <div className="flex items-center gap-1 rounded-full bg-muted p-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setDesktopView("chat")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                desktopView === "chat"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              )}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setDesktopView("quizzes")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                desktopView === "quizzes"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              )}
+            >
+              <GraduationCap className="h-3.5 w-3.5" />
+              Quizzes
+            </button>
           </div>
         </div>
 
-        {/* ── QUIZ MODE: show QuizPanel only ── */}
-        {isQuizMode && (
+        {/* ── QUIZ VIEW ── */}
+        <div
+          className={cn(
+            "min-h-0 flex-1 flex-col",
+            activeMobileView === "quizzes" ? "flex" : "hidden",
+            desktopView === "quizzes" ? "md:flex" : "md:hidden"
+          )}
+        >
           <QuizPanel documentId={documentId ?? ""} conversationId={conversationId} />
-        )}
+        </div>
 
-        {/* ── CHAT MODE: show chat interface only ── */}
-        {!isQuizMode && (
-          <>
-            <div className="no-scrollbar flex-1 overflow-y-auto p-4 md:p-6">
-              <div className="space-y-4">
-                <AnimatePresence>
-                  {conversation.messages.map((msg: any) => (
-                    <MessageBubble
-                      key={msg.id}
-                      role={msg.role}
-                      content={msg.content}
-                      responseType={msg.response_type}
-                      metadata={msg.metadata}
-                    />
-                  ))}
-                </AnimatePresence>
-                {sendMessageMutation.isPending && <TypingIndicator />}
-                <div ref={messagesEndRef} className="h-2" />
-              </div>
+        {/* ── CHAT VIEW ── */}
+        <div
+          className={cn(
+            "min-h-0 flex-1 flex-col",
+            activeMobileView === "chat" ? "flex" : "hidden",
+            desktopView === "chat" ? "md:flex" : "md:hidden"
+          )}
+        >
+          <div className="no-scrollbar flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="space-y-4">
+              <AnimatePresence>
+                {conversation.messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    responseType={msg.response_type}
+                    metadata={msg.metadata}
+                    agentKey={msg.agent_key}
+                  />
+                ))}
+              </AnimatePresence>
+              {sendMessageMutation.isPending && <TypingIndicator />}
+              <div ref={messagesEndRef} className="h-2" />
             </div>
-            <div className="p-4 md:p-6 bg-background border-t border-border/40">
-              <form onSubmit={handleSend} className="flex gap-3 items-center max-w-4xl mx-auto">
-                <Input
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Ask a question about the document…"
-                  className="flex-1 bg-card border-border/60 shadow-sm focus-visible:ring-primary/50 rounded-full px-5 py-6 text-base"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="rounded-full h-12 w-12 shadow-sm"
-                  disabled={!content.trim() || sendMessageMutation.isPending}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </form>
-            </div>
-          </>
-        )}
+          </div>
+          <div className="p-4 md:p-6 bg-background border-t border-border/40">
+            <form onSubmit={handleSend} className="flex gap-3 items-center max-w-4xl mx-auto">
+              <Input
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Ask a question, request a quiz, or send a math problem…"
+                className="flex-1 bg-card border-border/60 shadow-sm focus-visible:ring-primary/50 rounded-full px-5 py-6 text-base"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                className="rounded-full h-12 w-12 shadow-sm"
+                disabled={!content.trim() || sendMessageMutation.isPending}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

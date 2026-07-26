@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { MathRenderer } from "./MathRenderer";
 import { QuizCard } from "@/components/quiz/QuizCard";
+import { AgentBadge } from "./agent-badge";
 
 interface QuizQuestion {
   question: string;
@@ -17,9 +18,10 @@ interface MessageBubbleProps {
   content: string;
   responseType?: string | null;
   metadata?: string | null;
+  agentKey?: string | null;
 }
 
-export function MessageBubble({ role, content, responseType, metadata }: MessageBubbleProps) {
+export function MessageBubble({ role, content, responseType, metadata, agentKey }: MessageBubbleProps) {
   const isUser = role === "user";
 
   const renderAssistantContent = () => {
@@ -78,7 +80,14 @@ export function MessageBubble({ role, content, responseType, metadata }: Message
         {isUser ? (
           <p className="whitespace-pre-wrap break-words">{content}</p>
         ) : (
-          renderAssistantContent()
+          <>
+            {agentKey && (
+              <div className="mb-1.5">
+                <AgentBadge agentKey={agentKey} />
+              </div>
+            )}
+            {renderAssistantContent()}
+          </>
         )}
       </div>
     </motion.div>
