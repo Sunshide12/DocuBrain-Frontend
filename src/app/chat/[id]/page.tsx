@@ -68,7 +68,7 @@ export default function ChatPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["conversation", conversationId],
     queryFn: () => graphqlClient.request(CONVERSATION_QUERY, { id: conversationId }),
-    enabled: !!user && !!conversationId,
+    enabled: !!conversationId,
     refetchInterval: 3000,
   });
 
@@ -187,7 +187,6 @@ export default function ChatPage() {
     }
   }, [data?.conversation?.agent_type]);
 
-  if (!user) return <div className="flex h-screen items-center justify-center">Loading session...</div>;
   if (isLoading) return <div className="flex h-screen items-center justify-center">Loading conversation...</div>;
 
   const conversation = data?.conversation;
