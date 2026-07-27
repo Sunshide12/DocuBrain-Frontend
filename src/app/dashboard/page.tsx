@@ -4,21 +4,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { graphqlClient } from "@/lib/graphql";
 import { gql } from "graphql-request";
 import { useAuthStore } from "@/stores/auth";
-import { useEffect } from "react";
-import { toast } from "sonner";
 import { FileText, MessageSquare, CheckCircle } from "lucide-react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-
-const ME_QUERY = gql`
-  query Me {
-    me {
-      id
-      name
-      email
-    }
-  }
-`;
 
 const USER_STATS_QUERY = gql`
   query GetUserStats {
@@ -41,23 +29,6 @@ const LOGOUT_MUTATION = gql`
 export default function DashboardOverviewPage() {
   const setUser = useAuthStore((state) => state.setUser);
   const user = useAuthStore((state) => state.user);
-
-  const { data: meData, error: meError } = useQuery({
-    queryKey: ["me"],
-    queryFn: () => graphqlClient.request(ME_QUERY),
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (meData?.me) {
-      setUser(meData.me);
-    }
-    if (meError) {
-      toast.error("Session expired.");
-      setUser(null);
-      window.location.href = "/login?clearSession=true";
-    }
-  }, [meData, meError, setUser]);
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ["userStats"],

@@ -16,16 +16,6 @@ import { UploadFab } from "@/components/dashboard/upload-fab";
 import { DocumentCard } from "@/components/dashboard/document-card";
 
 
-const ME_QUERY = gql`
-  query Me {
-    me {
-      id
-      name
-      email
-    }
-  }
-`;
-
 const DOCUMENTS_QUERY = gql`
   query GetDocuments {
     documents(first: 50) {
@@ -84,23 +74,6 @@ export default function UploadsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const notifiedDocsRef = useRef<Set<string>>(new Set());
-
-  const { data: meData, error: meError } = useQuery({
-    queryKey: ["me"],
-    queryFn: () => graphqlClient.request(ME_QUERY),
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (meData?.me) {
-      setUser(meData.me);
-    }
-    if (meError) {
-      toast.error("Session expired.");
-      setUser(null);
-      window.location.href = "/login?clearSession=true";
-    }
-  }, [meData, meError, setUser]);
 
   const { data: docsData, isLoading: docsLoading } = useQuery({
     queryKey: ["documents"],
