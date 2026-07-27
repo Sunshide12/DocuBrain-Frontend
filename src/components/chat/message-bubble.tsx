@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { MathRenderer } from "./MathRenderer";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import { QuizCard } from "@/components/quiz/QuizCard";
 import { AgentBadge } from "./agent-badge";
 
@@ -43,9 +44,7 @@ export function MessageBubble({ role, content, responseType, metadata, agentKey 
       if (questions.length > 0) {
         return (
           <div className="space-y-3">
-            {content && (
-              <p className="whitespace-pre-wrap break-words text-sm">{content}</p>
-            )}
+            {content && <MarkdownRenderer content={content} />}
             {questions.map((q, i) => (
               <QuizCard
                 key={i}
@@ -61,7 +60,7 @@ export function MessageBubble({ role, content, responseType, metadata, agentKey 
       }
     }
 
-    return <p className="whitespace-pre-wrap break-words">{content}</p>;
+    return <MarkdownRenderer content={content} />;
   };
 
   return (
