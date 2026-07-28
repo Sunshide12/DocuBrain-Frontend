@@ -8,6 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import { graphqlClient } from "@/lib/graphql";
 import api from "@/lib/axios";
 import { useAuthStore } from "@/stores/auth";
+import { authErrorMessage } from "@/lib/auth-errors";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -74,9 +75,8 @@ export default function RegisterPage() {
       toast.success("Account created successfully!");
       router.push("/dashboard");
     },
-    onError: (error: any) => {
-      const msg = error.response?.errors?.[0]?.message || "Registration failed.";
-      toast.error(msg);
+    onError: (error: unknown) => {
+      toast.error(authErrorMessage(error, "Registration failed."));
     },
   });
 
