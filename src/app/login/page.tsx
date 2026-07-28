@@ -8,7 +8,6 @@ import { useMutation } from "@tanstack/react-query";
 import { graphqlClient } from "@/lib/graphql";
 import api from "@/lib/axios";
 import { useAuthStore } from "@/stores/auth";
-import { authErrorMessage } from "@/lib/auth-errors";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -68,8 +67,9 @@ export default function LoginPage() {
       toast.success("Successfully logged in!");
       router.push("/dashboard");
     },
-    onError: (error: unknown) => {
-      toast.error(authErrorMessage(error, "Invalid credentials."));
+    onError: (error: any) => {
+      const msg = error.response?.errors?.[0]?.message || "Invalid credentials.";
+      toast.error(msg);
     },
   });
 

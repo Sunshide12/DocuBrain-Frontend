@@ -22,9 +22,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
-      # 127.0.0.1, not localhost: in Alpine "localhost" resolves to ::1 first and
-      # the standalone server binds IPv4 only, so localhost gets Connection refused.
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/login"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/login"]
       interval: 30s
       timeout: 10s
       start_period: 30s
